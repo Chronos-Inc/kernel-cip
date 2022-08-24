@@ -611,7 +611,11 @@ not_relocated:	mov	r0, #0
  */
 		mov	r0, r4
 		mov	r1, sp			@ malloc space above stack
+#if defined(CONFIG_KERNEL_ZSTD)
+		add	r2, sp, #0x30000	@ Context needs ~160K
+#else
 		add	r2, sp, #MALLOC_SIZE	@ 64k max
+#endif
 		mov	r3, r7
 		bl	decompress_kernel
 

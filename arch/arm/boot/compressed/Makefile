@@ -80,6 +80,7 @@ compress-$(CONFIG_KERNEL_LZO)  = lzo
 compress-$(CONFIG_KERNEL_LZMA) = lzma
 compress-$(CONFIG_KERNEL_XZ)   = xzkern
 compress-$(CONFIG_KERNEL_LZ4)  = lz4
+compress-$(CONFIG_KERNEL_ZSTD) = zstd22
 
 libfdt_objs := fdt_rw.o fdt_ro.o fdt_wip.o fdt.o
 
@@ -108,6 +109,7 @@ targets       := vmlinux vmlinux.lds piggy_data piggy.o \
 clean-files += piggy_data lib1funcs.S ashldi3.S bswapsdi2.S hyp-stub.S
 
 KBUILD_CFLAGS += -DDISABLE_BRANCH_PROFILING
+KBUILD_CFLAGS += -D__DISABLE_EXPORTS
 
 ccflags-y := -fpic $(call cc-option,-mno-single-pic-base,) -fno-builtin \
 	     -I$(obj) $(DISABLE_ARM_SSP_PER_TASK_PLUGIN)
