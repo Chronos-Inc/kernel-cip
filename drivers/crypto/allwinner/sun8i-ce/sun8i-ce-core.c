@@ -47,7 +47,7 @@ static const struct ce_variant ce_h3_variant = {
 		},
 	.esr = ESR_H3,
 	.prng = CE_ALG_PRNG,
-	.trng = CE_ID_NOTSUPP,
+	.trng = CE_ALG_TRNG,
 };
 
 static const struct ce_variant ce_h5_variant = {
