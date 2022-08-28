@@ -13,10 +13,10 @@ struct gpio_desc;
  * struct w1_gpio_platform_data - Platform-dependent data for w1-gpio
  */
 struct w1_gpio_platform_data {
-	struct gpio_desc *gpiod;
-	struct gpio_desc *pullup_gpiod;
-	void (*enable_external_pullup)(int enable);
-	unsigned int pullup_duration;
+	struct gpio_desc *gpiod; /* data input; also used to pull the line down if pulldown_gpiod is not set */
+	struct gpio_desc *strong_pullup_gpiod; /* strong (high current) pull up */
+	struct gpio_desc *pulldown_gpiod; /* optional, data output using pull down */
+	unsigned int strong_pullup_duration;
 };
 
 #endif /* _LINUX_W1_GPIO_H */
