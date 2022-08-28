@@ -458,9 +458,17 @@ out:
 static int hym8563_init_device(struct i2c_client *client)
 {
 	int ret;
+	int attempt = 10;
 
 	/* Clear stop flag if present */
-	ret = i2c_smbus_write_byte_data(client, HYM8563_CTL1, 0);
+	for ( ; attempt > 0; attempt--) {
+		ret = i2c_smbus_write_byte_data(client, HYM8563_CTL1, 0);
+		if (ret < 0)
+			dev_err(&client->dev, "error writing CTL1 %d, retries left: %d\n", ret, attempt-1);
+		else
+			break;
+	}
+
 	if (ret < 0)
 		return ret;
 
