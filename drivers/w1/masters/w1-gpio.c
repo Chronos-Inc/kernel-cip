@@ -23,22 +23,19 @@ static u8 w1_gpio_set_pullup(void *data, int delay)
 	struct w1_gpio_platform_data *pdata = data;
 
 	if (delay) {
-		pdata->pullup_duration = delay;
+		pdata->strong_pullup_duration = delay;
 	} else {
-		if (pdata->pullup_duration) {
-			/*
-			 * This will OVERRIDE open drain emulation and force-pull
-			 * the line high for some time.
-			 */
-			gpiod_set_raw_value(pdata->gpiod, 1);
-			msleep(pdata->pullup_duration);
-			/*
-			 * This will simply set the line as input since we are doing
-			 * open drain emulation in the GPIO library.
-			 */
-			gpiod_set_value(pdata->gpiod, 1);
+		if (pdata->strong_pullup_duration) {
+			if (pdata->strong_pullup_gpiod) {
+				/* Set STRONG PU, attn: the GPIO may need to be configured as ACTIVE_LOW in the DT */
+				gpiod_set_value(pdata->strong_pullup_gpiod, 1);
+				msleep(pdata->strong_pullup_duration);
+				gpiod_set_value(pdata->strong_pullup_gpiod, 0);
+			} else {
+				printk("W1-GPIO: strong pull up requested, but not available");
+			}
 		}
-		pdata->pullup_duration = 0;
+		pdata->strong_pullup_duration = 0;
 	}
 
 	return 0;
@@ -48,7 +45,11 @@ static void w1_gpio_write_bit(void *data, u8 bit)
 {
 	struct w1_gpio_platform_data *pdata = data;
 
-	gpiod_set_value(pdata->gpiod, bit);
+	if (pdata->pulldown_gpiod) {
+		gpiod_set_value(pdata->pulldown_gpiod, !bit);
+	} else {
+		gpiod_set_value(pdata->gpiod, bit);
+	}
 }
 
 static u8 w1_gpio_read_bit(void *data)
@@ -106,32 +107,36 @@ static int w1_gpio_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	pdata->pulldown_gpiod = devm_gpiod_get_index_optional(dev, NULL, 2, GPIOD_OUT_LOW);
+	if (IS_ERR(pdata->pulldown_gpiod)) {
+		dev_err(dev, "gpio_request (pull down pin) failed\n");
+		return PTR_ERR(pdata->pulldown_gpiod);
+	}
+
+	/* if we have a pulldown pin, the data pin is only used as an input */
+	if (pdata->pulldown_gpiod)
+		gflags = GPIOD_IN;
+
 	pdata->gpiod = devm_gpiod_get_index(dev, NULL, 0, gflags);
 	if (IS_ERR(pdata->gpiod)) {
-		dev_err(dev, "gpio_request (pin) failed\n");
+		dev_err(dev, "gpio_request (data pin) failed\n");
 		return PTR_ERR(pdata->gpiod);
 	}
 
-	pdata->pullup_gpiod =
-		devm_gpiod_get_index_optional(dev, NULL, 1, GPIOD_OUT_LOW);
-	if (IS_ERR(pdata->pullup_gpiod)) {
-		dev_err(dev, "gpio_request_one "
-			"(ext_pullup_enable_pin) failed\n");
-		return PTR_ERR(pdata->pullup_gpiod);
+	pdata->strong_pullup_gpiod = devm_gpiod_get_index(dev, NULL, 1, GPIOD_OUT_LOW);
+	if (IS_ERR(pdata->strong_pullup_gpiod)) {
+		dev_err(dev, "gpio_request (strong pull up pin) failed\n");
+		return PTR_ERR(pdata->strong_pullup_gpiod);
 	}
+
+	if (!pdata->pulldown_gpiod)
+		gpiod_direction_output(pdata->gpiod, 1);
 
 	master->data = pdata;
 	master->read_bit = w1_gpio_read_bit;
-	gpiod_direction_output(pdata->gpiod, 1);
 	master->write_bit = w1_gpio_write_bit;
 
-	/*
-	 * If we are using open drain emulation from the GPIO library,
-	 * we need to use this pullup function that hammers the line
-	 * high using a raw accessor to provide pull-up for the w1
-	 * line.
-	 */
-	if (gflags == GPIOD_OUT_LOW_OPEN_DRAIN)
+	if (gflags == GPIOD_OUT_LOW_OPEN_DRAIN || pdata->strong_pullup_gpiod)
 		master->set_pullup = w1_gpio_set_pullup;
 
 	err = w1_add_master_device(master);
@@ -139,12 +144,6 @@ static int w1_gpio_probe(struct platform_device *pdev)
 		dev_err(dev, "w1_add_master device failed\n");
 		return err;
 	}
-
-	if (pdata->enable_external_pullup)
-		pdata->enable_external_pullup(1);
-
-	if (pdata->pullup_gpiod)
-		gpiod_set_value(pdata->pullup_gpiod, 1);
 
 	platform_set_drvdata(pdev, master);
 
@@ -156,11 +155,8 @@ static int w1_gpio_remove(struct platform_device *pdev)
 	struct w1_bus_master *master = platform_get_drvdata(pdev);
 	struct w1_gpio_platform_data *pdata = dev_get_platdata(&pdev->dev);
 
-	if (pdata->enable_external_pullup)
-		pdata->enable_external_pullup(0);
-
-	if (pdata->pullup_gpiod)
-		gpiod_set_value(pdata->pullup_gpiod, 0);
+	if (pdata->strong_pullup_gpiod)
+		gpiod_set_value(pdata->strong_pullup_gpiod, 0);
 
 	w1_remove_master_device(master);
 
@@ -169,21 +165,11 @@ static int w1_gpio_remove(struct platform_device *pdev)
 
 static int __maybe_unused w1_gpio_suspend(struct device *dev)
 {
-	struct w1_gpio_platform_data *pdata = dev_get_platdata(dev);
-
-	if (pdata->enable_external_pullup)
-		pdata->enable_external_pullup(0);
-
 	return 0;
 }
 
 static int __maybe_unused w1_gpio_resume(struct device *dev)
 {
-	struct w1_gpio_platform_data *pdata = dev_get_platdata(dev);
-
-	if (pdata->enable_external_pullup)
-		pdata->enable_external_pullup(1);
-
 	return 0;
 }
 
