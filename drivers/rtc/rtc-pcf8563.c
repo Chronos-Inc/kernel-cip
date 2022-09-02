@@ -527,6 +527,7 @@ static int pcf8563_probe(struct i2c_client *client,
 {
 	struct pcf8563 *pcf8563;
 	int err;
+	int attempt = 10;
 	unsigned char buf;
 
 	dev_dbg(&client->dev, "%s\n", __func__);
@@ -545,11 +546,16 @@ static int pcf8563_probe(struct i2c_client *client,
 
 	/* Set timer to lowest frequency to save power (ref Haoyu datasheet) */
 	buf = PCF8563_TMRC_1_60;
-	err = pcf8563_write_block_data(client, PCF8563_REG_TMRC, 1, &buf);
-	if (err < 0) {
-		dev_err(&client->dev, "%s: write error\n", __func__);
-		return err;
+	for ( ; attempt > 0; attempt--) {
+		err = pcf8563_write_block_data(client, PCF8563_REG_TMRC, 1, &buf);
+		if (err < 0)
+			dev_err(&client->dev, "%s: write error, retries left: %d\n", __func__, attempt-1);
+		else
+			break;
 	}
+
+	if (err < 0)
+                return err;
 
 	/* Clear flags and disable interrupts */
 	buf = 0;
