@@ -6414,7 +6414,9 @@ static inline void l2cap_le_sig_channel(struct l2cap_conn *conn,
 	if (err) {
 		struct l2cap_cmd_rej_unk rej;
 
-		BT_ERR("Wrong link type (%d)", err);
+		/* don't spam when ECRED disabled */
+		if (enable_ecred || !(err == -EINVAL && cmd->code == L2CAP_ECRED_CONN_REQ))
+			BT_ERR("rejecting LE L2CAP command (0x%2.2x), error (%d)", cmd->code, err);
 
 		rej.reason = cpu_to_le16(L2CAP_REJ_NOT_UNDERSTOOD);
 		l2cap_send_cmd(conn, cmd->ident, L2CAP_COMMAND_REJ,
